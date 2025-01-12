@@ -770,7 +770,6 @@ def _validate_user_ccd_keys(keys: Sequence[str]) -> None:
       '_chem_comp_atom.atom_id',
       '_chem_comp_atom.type_symbol',
       '_chem_comp_atom.charge',
-      '_chem_comp_atom.pdbx_leaving_atom_flag',
       '_chem_comp_atom.pdbx_model_Cartn_x_ideal',
       '_chem_comp_atom.pdbx_model_Cartn_y_ideal',
       '_chem_comp_atom.pdbx_model_Cartn_z_ideal',
@@ -1329,8 +1328,8 @@ def load_fold_inputs_from_path(json_path: pathlib.Path) -> Iterator[Input]:
         yield Input.from_alphafoldserver_fold_job(fold_job)
       except ValueError as e:
         raise ValueError(
-            f'Failed to load fold job {fold_job_idx} from {json_path}. The JSON'
-            ' was detected to be the AlphaFold Server dialect.'
+            f'Failed to load fold job {fold_job_idx} from {json_path}'
+            f' (AlphaFold Server dialect): {e}'
         ) from e
   else:
     # AlphaFold 3 JSON.
@@ -1338,8 +1337,7 @@ def load_fold_inputs_from_path(json_path: pathlib.Path) -> Iterator[Input]:
       yield Input.from_json(json_str, json_path)
     except ValueError as e:
       raise ValueError(
-          f'Failed to load fold input from {json_path}. The JSON was detected'
-          ' to be the AlphaFold 3 dialect.'
+          f'Failed to load input from {json_path} (AlphaFold 3 dialect): {e}'
       ) from e
 
 
