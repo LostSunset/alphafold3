@@ -150,17 +150,39 @@ absl::StatusOr<std::vector<absl::string_view>> TokenizeInternal(
   return tokens;
 }
 
+// Returns whether the token doesn't need any quoting. This is true if the token
+// isn't empty and contains only safe characters [A-Za-z0-9.?-].
+bool IsTrivialToken(const absl::string_view value) {
+  if (value.empty()) {
+    return false;
+  }
+
+  return std::all_of(value.begin(), value.end(), [](char c) {
+    return absl::ascii_isalnum(c) || c == '.' || c == '?' || c == '-';
+  });
+}
+
+// Returns whether the token needs to be a multiline token. This happens if it
+// has a newline or both single and double quotes.
+bool IsMultiLineToken(const absl::string_view value) {
+  bool has_single_quotes = false;
+  bool has_double_quotes = false;
+  for (const char c : value) {
+    if (c == '\n') {
+      return true;
+    } else if (c == '\'') {
+      has_single_quotes = true;
+    } else if (c == '"') {
+      has_double_quotes = true;
+    }
+  }
+  return has_single_quotes && has_double_quotes;
+}
+
 absl::string_view GetEscapeQuote(const absl::string_view value) {
   // Empty values should not happen, but if so, they should be quoted.
   if (value.empty()) {
     return "\"";
-  }
-
-  // Shortcut for the most common cases where no quoting needed.
-  if (std::all_of(value.begin(), value.end(), [](char c) {
-        return absl::ascii_isalnum(c) || c == '.' || c == '?' || c == '-';
-      })) {
-    return "";
   }
 
   // The value must not start with one of these CIF keywords.
@@ -179,13 +201,26 @@ absl::string_view GetEscapeQuote(const absl::string_view value) {
     return "\"";
   }
 
-  // No quotes or whitespace allowed inside.
+  // No quotes or whitespace allowed inside. Rare case when both double and
+  // single quotes are present is handled by IsMultiLineToken.
+  bool use_double_quote = true;
+  bool use_single_quote = true;
+  bool needs_quote = false;
   for (const char c : value) {
-    if (c == '"') {
-      return "'";
-    } else if (c == '\'' || c == ' ' || c == '\t') {
-      return "\"";
+    if (c == ' ' || c == '\t') {
+      needs_quote = true;
+    } else if (c == '"') {
+      needs_quote = true;
+      use_double_quote = false;
+    } else if (c == '\'') {
+      needs_quote = true;
+      use_single_quote = false;
     }
+  }
+  if (needs_quote && use_double_quote) {
+    return "\"";
+  } else if (needs_quote && use_single_quote) {
+    return "'";
   }
   return "";
 }
@@ -254,7 +289,11 @@ class Column {
     int max_value_length = 0;
     for (size_t i = 0; i < values->size(); ++i) {
       absl::string_view value = (*values)[i];
-      if (absl::StrContains(value, '\n')) {
+      if (IsTrivialToken(value)) {
+        // Shortcut for the most common cases where no quoting/multiline needed.
+        max_value_length = std::max<int>(max_value_length, value.size());
+        continue;
+      } else if (IsMultiLineToken(value)) {
         values_with_newlines_.insert(i);
       } else {
         absl::string_view quote = GetEscapeQuote(value);
